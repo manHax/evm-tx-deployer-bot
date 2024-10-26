@@ -11,10 +11,18 @@ async function operation(acc) {
     await core.connectWallet();
     await core.getBalance();
 
-    if (core.balance.ETH < 0.0015) {
-      if (core.balance.WETH > 0.0001) {
+    if (core.balance.ETH < 0.0015)
+      throw Error("Minimum Eth Balance Is 0.0015 ETH");
+    if (Config.USEWRAPUNWRAP ?? true)
+      for (const count of Array(Config.WRAPUNWRAPCOUNT)) {
+        if (core.balance.ETH < 0.0015)
+          throw Error(
+            "Balance is less than 0.0015 ETH, please fill up your balance"
+          );
         try {
+          await core.deposit();
           await core.withdraw();
+          core.txCount += 1;
         } catch (error) {
           await Helper.delay(
             3000,
@@ -23,37 +31,27 @@ async function operation(acc) {
             core
           );
         }
-      } else {
-        throw Error( "Balance is less than 0.0015 ETH, please fill up your balance"); 
-      }
-    }
-    
-    for (const count of Array(Config.WRAPUNWRAPCOUNT)) {
-      if (core.balance.ETH < 0.0015)
-        throw Error(
-          "Balance is less than 0.0015 ETH, please fill up your balance"
-        );
-      try {
-        await core.deposit();
-        await core.withdraw();
-        core.txCount += 1;
-      } catch (error) {
+        const delay = Helper.random(10000, 60000 * 2);
         await Helper.delay(
-          3000,
+          delay,
           acc,
-          `Error during deposit/withdraw operation: ${error.message}`,
+          `Delaying for ${Helper.msToTime(delay)} Before Executing Next TX`,
           core
         );
       }
-      const delay = Helper.random(10000, 60000 * 2);
-      await Helper.delay(
-        delay,
-        acc,
-        `Delaying for ${Helper.msToTime(delay)} Before Executing Next TX`,
-        core
-      );
-    }
 
+    if (
+      (Config.USERAWTXDATA ?? false) &&
+      (Config.RAWTX ?? undefined) !=
+        {
+          CONTRACTTOINTERACT: "CONTRACTADDRESSTOINTERACT",
+          RAWDATA: "RAWDATA",
+        }
+    )
+      for (const tx of Array(Config.RAWTXCOUNT)) {
+        await core.rawTx();
+        core.rawTxCount += 1;
+      }
     const delay = 60000 * 60 * 24;
     await Helper.delay(
       delay,

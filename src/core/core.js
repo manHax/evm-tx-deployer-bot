@@ -10,6 +10,7 @@ export default class Core {
   constructor(acc) {
     this.acc = acc;
     this.txCount = 0;
+    this.rawTxCount = 0;
     this.provider = new ethers.JsonRpcProvider(RPC.RPCURL, RPC.CHAINID);
   }
 
@@ -160,35 +161,80 @@ export default class Core {
     }
   }
 
-  async executeTx(tx) {
-    logger.info(`TX DATA ${JSON.stringify(Helper.serializeBigInt(tx))}`);
-    await Helper.delay(500, this.acc, `Executing TX...`, this);
-    const txRes = await this.wallet.sendTransaction(tx);
-    if (Config.WAITFORBLOCKCONFIRMATION) {
+  async rawTx() {
+    try {
       await Helper.delay(
         500,
         this.acc,
-        `Tx Executed Waiting For Block Confirmation...`,
+        `Try To Executing RAW Transaction`,
         this
       );
-      const txRev = await txRes.wait();
-      logger.info(`Tx Confirmed and Finalizing: ${JSON.stringify(txRev)}`);
-      await Helper.delay(
-        5000,
-        this.acc,
-        `Tx Executed \n${RPC.EXPLORER}tx/${txRev.hash}`,
-        this
+
+      const amountInWei = ethers.parseEther(
+        Helper.randomFloat(Config.TXAMOUNTMIN, Config.TXAMOUNTMAX).toString()
       );
-    } else {
-      await Helper.delay(500, this.acc, `Tx Executed...`, this);
-      await Helper.delay(
-        5000,
-        this.acc,
-        `Tx Executed \n${RPC.EXPLORER}tx/${txRes.hash}`,
-        this
+      const data = Config.RAWTX.RAWDATA;
+      const nonce = await this.getOptimalNonce();
+      const gasLimit = await this.estimateGasWithRetry(
+        Config.RAWTX.CONTRACTTOINTERACT,
+        amountInWei,
+        data,
+        3,
+        1000
       );
+
+      const tx = {
+        to: Config.RAWTX.CONTRACTTOINTERACT,
+        value: amountInWei,
+        gasLimit,
+        gasPrice: ethers.parseUnits(Config.GWEIPRICE.toString(), "gwei"),
+        nonce: nonce,
+        data: data,
+      };
+
+      await this.executeTx(tx);
+    } catch (error) {
+      throw error;
     }
-    await this.getBalance(true);
+  }
+
+  async executeTx(tx) {
+    try {
+      logger.info(`TX DATA ${JSON.stringify(Helper.serializeBigInt(tx))}`);
+      await Helper.delay(500, this.acc, `Executing TX...`, this);
+      const txRes = await this.wallet.sendTransaction(tx);
+      if (Config.WAITFORBLOCKCONFIRMATION) {
+        await Helper.delay(
+          500,
+          this.acc,
+          `Tx Executed Waiting For Block Confirmation...`,
+          this
+        );
+        const txRev = await txRes.wait();
+        logger.info(`Tx Confirmed and Finalizing: ${JSON.stringify(txRev)}`);
+        await Helper.delay(
+          5000,
+          this.acc,
+          `Tx Executed \n${RPC.EXPLORER}tx/${txRev.hash}`,
+          this
+        );
+      } else {
+        await Helper.delay(500, this.acc, `Tx Executed...`, this);
+        await Helper.delay(
+          5000,
+          this.acc,
+          `Tx Executed \n${RPC.EXPLORER}tx/${txRes.hash}`,
+          this
+        );
+      }
+      await this.getBalance(true);
+    } catch (error) {
+      if (error.message.includes("504")) {
+        await Helper.delay(5000, this.acc, error.message, this);
+      } else {
+        throw error;
+      }
+    }
   }
 
   async getOptimalNonce() {
